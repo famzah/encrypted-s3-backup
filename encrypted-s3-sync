@@ -60,9 +60,16 @@ function create_bucket() {
 	if [ "$GOT_BUCKET" == "" ]; then # non-existing
 		debug "create_bucket(): The S3 bucket \"$AWS_BUCKET\" does not exist. Creating it..."
 
-		aws_cmd s3api create-bucket --acl private --bucket "$AWS_BUCKET" \
-			--region "$AWS_REGION" \
-			--create-bucket-configuration LocationConstraint="$AWS_REGION" >/dev/null || fail
+		if [ "$AWS_REGION" != 'us-east-1' ]; then
+			aws_cmd s3api create-bucket --acl private --bucket "$AWS_BUCKET" \
+				--region "$AWS_REGION" \
+				--create-bucket-configuration LocationConstraint="$AWS_REGION" \
+				>/dev/null || fail
+		else # "us-east-1" does not require, nor accept a Location Constraint
+			aws_cmd s3api create-bucket --acl private --bucket "$AWS_BUCKET" \
+				--region "$AWS_REGION" \
+				>/dev/null || fail
+		fi
 
 		aws_cmd s3api put-bucket-versioning --bucket "$AWS_BUCKET" \
 			--versioning-configuration 'Status=Enabled' || fail
