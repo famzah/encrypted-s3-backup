@@ -1,0 +1,48 @@
+#!/bin/bash
+set -u
+
+if [ "$#" -ne 3 ]; then
+	{
+	echo "Usage: $0 AWS_PROFILE AWS_REGION AWS_BUCKET"
+	echo "Example: $0 default eu-central-1 my-backup-s3"
+	echo
+	echo "Retrieve the original backup key."
+	} >&2
+	exit 1
+fi
+
+AWS_PROFILE="$1" ; shift
+AWS_REGION="$1" ; shift
+AWS_BUCKET="$1" ; shift
+
+echo -n "Enter your master encryption key: "
+read -r -s ENCRYPTION_KEY
+ENCRYPTION_KEY="$(echo -n "$ENCRYPTION_KEY"|md5sum|cut -d" " -f1)"
+
+echo
+echo "Retrieving the key from the S3 bucket..."
+
+ROOTDIR="$(mktemp -d)" || exit 1
+
+aws --profile "$AWS_PROFILE" \
+	--output text \
+	--region "$AWS_REGION" \
+	s3 cp "s3://$AWS_BUCKET/backup.info/key/data" "$ROOTDIR/data" \
+		--sse-c \
+		--sse-c-key="$ENCRYPTION_KEY"
+EC="$?"
+
+echo
+if [ "$EC" -eq 0 ]; then
+	echo "Success. Here is your backup key:"
+	echo
+	cat "$ROOTDIR/data"
+	echo
+	echo "You can now use 'encrypted-s3-download-file' to download any file from your S3 backup."
+	echo
+else
+	echo "ERROR: Download failed" >&2
+fi
+
+rm -f "$ROOTDIR/data"
+rmdir "$ROOTDIR"

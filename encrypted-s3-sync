@@ -1,0 +1,233 @@
+#!/bin/bash
+set -u
+
+function debug() {
+	logger --tag "$LOGGER_ID" -p user.info "$1"
+}
+
+function crit() {
+	logger --tag "$LOGGER_ID" -p user.crit --stderr "$1"
+}
+
+function fail() {
+	crit "ERROR: aws CLI command failed; aborting!"
+	exit 1
+}
+
+function aws_cmd() {
+	aws --profile "$AWS_PROFILE" \
+		--output text "$@" \
+		--region "$AWS_REGION" \
+		--cli-read-timeout "$AWS_NET_TIMEOUT" \
+		--cli-connect-timeout "$AWS_NET_TIMEOUT"
+	local EC="$?"
+
+	debug "aws CLI exit code: $EC"
+
+	return "$EC"
+}
+
+function assert_config_key_not_empty() {
+	local KEY="$1"
+	set +u
+	local VAL="${!KEY}"
+	set -u
+	if [ "$VAL" == "" ]; then
+		crit "ERROR: The config file is incomplete. No value for \"$KEY\"." >&2
+		exit 1
+	fi
+}
+
+function assert_config_keys() {
+	assert_config_key_not_empty AWS_PROFILE
+	assert_config_key_not_empty AWS_REGION
+	assert_config_key_not_empty AWS_BUCKET
+	assert_config_key_not_empty AWS_RETENTION_DAYS
+	assert_config_key_not_empty LOCAL_DIR
+	#assert_config_key_not_empty LOCAL_LIST
+	assert_config_key_not_empty LOCAL_LOCK
+	assert_config_key_not_empty ENCRYPTION_KEY
+}
+
+function create_bucket() {
+	debug "create_bucket(): Listing existing S3 buckets..."
+
+	local GOT_BUCKET
+	GOT_BUCKET="$(aws_cmd s3api list-buckets)"
+	[ "$?" -eq 0 ] || fail
+	GOT_BUCKET="$(echo "$GOT_BUCKET" | egrep "^BUCKETS" | awk '{print $3}' | grep -x "$AWS_BUCKET" )"
+
+	if [ "$GOT_BUCKET" == "" ]; then # non-existing
+		debug "create_bucket(): The S3 bucket \"$AWS_BUCKET\" does not exist. Creating it..."
+
+		aws_cmd s3api create-bucket --acl private --bucket "$AWS_BUCKET" \
+			--region "$AWS_REGION" \
+			--create-bucket-configuration LocationConstraint="$AWS_REGION" >/dev/null || fail
+
+		aws_cmd s3api put-bucket-versioning --bucket "$AWS_BUCKET" \
+			--versioning-configuration 'Status=Enabled' || fail
+
+		local DAYS="$AWS_RETENTION_DAYS"
+		# https://ejhay.es/2015/12/03/aws-object-expiration/
+		# http://docs.aws.amazon.com/cli/latest/reference/s3api/put-bucket-lifecycle.html
+		# http://docs.aws.amazon.com/AmazonS3/latest/dev/intro-lifecycle-rules.html#lifecycle-config-conceptual-ex8
+		aws_cmd s3api put-bucket-lifecycle --bucket "$AWS_BUCKET" \
+			--lifecycle-configuration '
+			{
+				"Rules": [
+					{
+						"ID": "Purge deleted objects older than '"$DAYS"' days",
+						"Prefix": "",
+						"Status": "Enabled",
+						"Expiration": {
+							"ExpiredObjectDeleteMarker": true
+						},
+						"NoncurrentVersionExpiration": {
+							"NoncurrentDays": '"$DAYS"'
+						},
+						"AbortIncompleteMultipartUpload": {
+							"DaysAfterInitiation": 3
+						}
+					}
+				]
+			}
+			' || fail
+	else
+		debug "create_bucket(): The S3 bucket \"$AWS_BUCKET\" already exists."
+	fi
+
+	debug "create_bucket(): All done."
+}
+
+function sync_dir() {
+	debug "sync_dir(): Start transfer for \"$LOCAL_DIR\"..."
+
+	local DEBUGF
+	DEBUGF="$(mktemp)"
+	[ "$?" -eq 0 ] || exit 1 # mktemp() failed
+
+	debug "sync_dir(): aws s3 sync progress is logged in \"$DEBUGF\""
+	aws_cmd s3 sync "$LOCAL_DIR" "s3://${AWS_BUCKET}/${REMOTE_DIR_PREFIX}" \
+		--delete \
+		--acl 'private' \
+		--no-follow-symlinks \
+		--no-guess-mime-type \
+		--sse-c \
+		--sse-c-key "$ENCRYPTION_KEY" \
+		--storage-class 'STANDARD_IA' \
+		--content-type 'application/octet-stream' \
+		>"$DEBUGF" || fail
+		#--only-show-errors || fail
+
+	local CNT
+	CNT="$(cat "$DEBUGF"|tr '\r' '\n' \
+		|egrep -v '^Completed .* part.* with.* file.* remaining'|wc -l)"
+	rm "$DEBUGF"
+
+	debug "sync_dir(): All done. Transferred $CNT files."
+}
+
+function _bad_download_try() {
+	local EXPECTED="$1" ; shift
+	local DST_FILE="$1" ; shift
+	local FILE="$1" ; shift
+
+	local OUT="$(aws_cmd s3 cp "s3://$AWS_BUCKET/$FILE" "$DST_FILE" \
+		"$@" --only-show-errors 2>&1 >/dev/null)"
+	local OUT_SHORT="$(echo "$OUT"|cut -d: -f2|cut -b2-)"
+
+	if [ -e "$DST_FILE" ]; then
+		crit "_bad_download_try(): ERROR: A file was transferred at \"$DST_FILE\"." >&2
+		rm "$DST_FILE"
+	fi
+
+	if [ "$OUT_SHORT" != "$EXPECTED" ]; then
+		crit "_bad_download_try(): ERROR: Expected \"$EXPECTED\" but got \"$OUT_SHORT\"." >&2
+		crit "_bad_download_try(): ERROR: Full output follows: $OUT" >&2
+	fi
+}
+
+function random_download_verify() {
+	local FILE="$(
+		cd "$LOCAL_DIR" || exit 0;
+		find -type f -print0|sort -z --random-sort|cut -d $'\0' -f1|cut -b3-
+	)"
+	debug "random_download_verify(): Starting check for file \"$FILE\"."
+
+	local DST
+	DST="$(mktemp -d)"
+	[ "$?" -eq 0 ] || exit 1 # mktemp() failed
+	local DST_FILE="$DST/just-downloaded"
+
+	debug "random_download_verify(): Negative tests..."
+	_bad_download_try "Bad Request" "$DST_FILE" "${REMOTE_DIR_PREFIX}${FILE}"
+	_bad_download_try "Forbidden"   "$DST_FILE" "${REMOTE_DIR_PREFIX}${FILE}" \
+		--sse-c --sse-c-key "too_short"
+	_bad_download_try "Forbidden"   "$DST_FILE" "${REMOTE_DIR_PREFIX}${FILE}" \
+		--sse-c --sse-c-key "12345678901234567890123456789012"
+
+	debug "random_download_verify(): Positive test: download & checksum..."
+	aws_cmd s3 cp "s3://$AWS_BUCKET/${REMOTE_DIR_PREFIX}${FILE}" "$DST_FILE" \
+		--sse-c --sse-c-key "$ENCRYPTION_KEY" \
+		--only-show-errors || fail
+	
+	if ! cmp "$DST_FILE" "$LOCAL_DIR/$FILE"; then
+		{
+		crit "random_download_verify(): ERROR: Downloaded file checksum mismatch:"
+		ls -la "$DST_FILE" "$LOCAL_DIR/$FILE"
+		md5sum "$DST_FILE" "$LOCAL_DIR/$FILE"
+		} >&2
+	fi
+
+	rm -f "$DST_FILE"
+	rmdir "$DST"
+
+	debug "random_download_verify(): All done."
+}
+
+function list_bucket_to_file() {
+	if [ "$LOCAL_LIST" == "" ]; then
+		debug "list_bucket_to_file(): Skipped in configuration."
+		return
+	fi
+
+	debug "list_bucket_to_file(): Getting a list..."
+	aws_cmd s3 ls --recursive --summarize "s3://$AWS_BUCKET/${REMOTE_DIR_PREFIX}" > "$LOCAL_LIST" || fail
+	debug "list_bucket_to_file(): All done."
+}
+
+### XXX: main()
+
+LOGGER_ID="encrypted-s3-sync[$$]" # so that we use the same PID
+
+if [ "$#" -ne 1 ]; then
+	{
+	echo "Usage: $0 config_file"
+	echo "Sync a local directory to an encrypted S3 bucket."
+	} >&2
+	exit 1
+fi
+
+CONFIG_FILE="$1"
+
+AWS_PROFILE="default"
+REMOTE_DIR_PREFIX=""
+LOCAL_LIST=""
+AWS_NET_TIMEOUT=60
+source "$CONFIG_FILE" || exit 1
+assert_config_keys
+
+if [ "$REMOTE_DIR_PREFIX" != "" ]; then
+	REMOTE_DIR_PREFIX="$REMOTE_DIR_PREFIX/"
+fi
+
+# obtain an exclusive lock
+exec {lock_fd}>"$LOCAL_LOCK" || exit 1
+flock -n "$lock_fd" || { crit "ERROR: flock() failed." >&2; exit 1; }
+
+debug "Starting with config \"$CONFIG_FILE\"..."
+create_bucket
+sync_dir
+random_download_verify
+list_bucket_to_file # this seems to consume many S3 LIST resources
+debug "All done."

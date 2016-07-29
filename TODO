@@ -1,0 +1,2 @@
+aws s3 sync:
+- the backup encryption key is visible in the "ps" output

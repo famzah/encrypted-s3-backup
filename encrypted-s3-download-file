@@ -1,0 +1,38 @@
+#!/bin/bash
+set -u
+
+if [ "$#" -ne 4 ]; then
+	{
+	echo "Usage: $0 AWS_PROFILE AWS_REGION s3://AWS_BUCKET/FILE_LOCATION LOCAL_DESTINATION"
+	echo "Example: $0 default eu-central-1 s3://my-backup-s3/home/user/file1 /tmp/test123"
+	echo
+	echo "Download a file and decrypt it using the backup key."
+	} >&2
+	exit 1
+fi
+
+AWS_PROFILE="$1" ; shift
+AWS_REGION="$1" ; shift
+AWS_BUCKET="$1" ; shift
+LOCAL_DEST="$1" ; shift
+
+echo -n "Enter your backup encryption key: "
+read -r -s ENCRYPTION_KEY
+
+echo
+echo "Downloading the file from the S3 bucket..."
+
+aws --profile "$AWS_PROFILE" \
+	--output text \
+	--region "$AWS_REGION" \
+	s3 cp "$AWS_BUCKET" "$LOCAL_DEST" \
+		--sse-c \
+		--sse-c-key="$ENCRYPTION_KEY"
+EC="$?"
+
+echo
+if [ "$EC" -eq 0 ]; then
+	echo "Success."
+else
+	echo "ERROR: Download failed" >&2
+fi

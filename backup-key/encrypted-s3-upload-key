@@ -1,0 +1,145 @@
+#!/bin/bash
+set -u
+
+function populate_conf_template() {
+	cat > "$MY_CONF" <<EOF
+###
+### Please verify the below configuration.
+###
+
+AWS_PROFILE="$AWS_PROFILE"
+AWS_REGION="$AWS_REGION"
+AWS_BUCKET="$AWS_BUCKET"
+
+ENCRYPTION_KEY='$GENERATED_ENC_KEY' # FYI only; the hash of your easy-to-remember encryption key
+
+### USER_CONFIG_END_MARKER
+
+###
+### Nothing to verify below.
+###
+
+AWS_RETENTION_DAYS=30
+LOCAL_LOCK='$MY_LOCK'
+LOCAL_LIST=''
+
+LOCAL_DIR="$BACKUP_ROOT_DIR/key"
+REMOTE_DIR_PREFIX="backup.info/key"
+EOF
+}
+
+function convert_key() {
+	GENERATED_ENC_KEY="$(echo -n "$1"|md5sum|cut -d" " -f1)"
+	if [ "${#GENERATED_ENC_KEY}" -ne 32 ]; then
+		echo "ERROR: Unable to convert the original key to MD5" >&2
+		exit 1
+	fi
+}
+
+function confirm_config() {
+	echo
+	echo "All settings will now be displayed for you to verify them."
+	echo -n "Press Enter to continue."
+	read
+
+	echo
+	grep -B999 'USER_CONFIG_END_MARKER' "$MY_CONF" | grep -v 'USER_CONFIG_END_MARKER'
+
+	cat "$BACKUP_ROOT_DIR/key/data"
+	echo "#_MASTER_KEY  ='$USER_EASY_KEY' # you MUST remember this key"
+	echo
+	
+	echo -n "Type 'yes' to confirm the backup configuration: "
+	read USER_INPUT
+	echo
+}
+
+function backup_key() {
+	BACKUP_ROOT_DIR="$(mktemp -d --suffix .backup.info)" || exit 0
+
+	MY_CONF="$BACKUP_ROOT_DIR/.config"
+
+	MY_LOCK="$BACKUP_ROOT_DIR/.lock"
+	touch "$MY_LOCK"
+
+	mkdir "$BACKUP_ROOT_DIR/key"
+	echo "#_ORIGINAL_KEY='$ORIG_KEY' # original backup encryption key" > "$BACKUP_ROOT_DIR/key/data"
+
+	convert_key "$USER_EASY_KEY" # we protect using the key which the user can remember
+	populate_conf_template
+
+	confirm_config
+	if [ "$USER_INPUT" == 'yes' ]; then
+		encrypted-s3-sync "$MY_CONF" && echo "SUCCESS: Your backup key is archived online"
+	else
+		echo >&2
+		echo "ERROR: Aborted" >&2
+	fi
+
+	rm "$BACKUP_ROOT_DIR/key/data" "$MY_CONF" "$MY_LOCK"
+	rmdir "$BACKUP_ROOT_DIR/key" "$BACKUP_ROOT_DIR"
+}
+
+function ensure_not_empty () {
+	if [ "$1" == "" ]; then
+		echo "ERROR: You need to specify a value" >&2
+		exit 1
+	fi
+}
+
+function intro() {
+	cat <<EOF
+
+This program stores online the original key for your backup.
+This key was generated randomly and is exactly 32 characters long,
+and thus not really suitable to be remembered by a human.
+
+In case you lose your local hard disk and information,
+you can download this original backup encryption key from your S3 bucket.
+
+Once you are in possession of the encryption key,
+you can download the rest of your backup from your S3 bucket.
+
+You must protect this encryption key when uploading it online.
+A dialog will ask you to enter an easy-to-remember secret key.
+If you forget this secret key and lose your hard disk,
+you will not be able to restore your files from your S3 bucket.
+
+EOF
+	echo -n "Now, let's begin. Press Enter to continue."
+	read
+	echo
+}
+
+function interview() {
+	echo -n "AWS profile to use [default]: "
+	read -r AWS_PROFILE
+	if [ "$AWS_PROFILE" == "" ]; then
+		AWS_PROFILE='default'
+	fi
+
+	echo -n "AWS region [example: eu-central-1]: "
+	read -r AWS_REGION
+	ensure_not_empty "$AWS_REGION"
+
+	echo -n "AWS S3 bucket name: "
+	read -r AWS_BUCKET
+	ensure_not_empty "$AWS_BUCKET"
+	
+
+	echo -n "Original backup encryption key: "
+	read -r ORIG_KEY
+	ensure_not_empty "$ORIG_KEY"
+
+	echo -n "Encryption key for the upload (you MUST remember this key): "
+	read -r USER_EASY_KEY
+	ensure_not_empty "$USER_EASY_KEY"
+	if [ "${#USER_EASY_KEY}" -lt 10 ]; then
+		echo "ERROR: The supplied encryption key is too short" >&2
+		exit 1
+	fi
+}
+
+intro
+interview
+backup_key
