@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# The AWS CLI profile to use.
+# http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-multiple-profiles
+
+AWS_PROFILE='default'
+
+# You should choose the most geographically close region, in order to upload faster to S3:
+# http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
+
+AWS_REGION='us-east-1'
+
+# The S3 bucket must NOT exist.
+# The backup script creates and configures the S3 bucket.
+
+AWS_BUCKET='example-backup-bucket'
+
+# How long old file versions (like deleted or changed files) are kept as history in your S3 bucket.
+# Note that current latest versions of your backed up files are kept forever.
+
+AWS_RETENTION_DAYS=30
+
+# The backup source. This local directory is recursively synced with your S3 bucket.
+# Example: LOCAL_DIR='/home/user32/documents'
+
+LOCAL_DIR='%LOCAL_DIR%'
+
+# The lock file prevents the backup to run more than one instance simultaneously.
+
+LOCAL_LOCK=~/.example-s3-backup.lock
+
+# A path prefix to use when storing objects online in your S3 bucket.
+# This lets you organize the root file structure of your S3 bucket better,
+# as well as to prevent name collisions if you are backing up more than one PC in the same S3 bucket.
+# Example: REMOTE_DIR_PREFIX='workstation1/linux/user32/documents'
+
+REMOTE_DIR_PREFIX='%PREFIX_DIR%'
+
+# A file path where a full list of your S3 bucket/REMOTE_DIR_PREFIX is made once the backup completes.
+# Leave empty if you don't want to generate such a list.
+# Unless you really need this, it's best to leave it empty,
+# as listing may consume a lot of LIST paid S3 resources.
+
+LOCAL_LIST=''
+
+# Randomly generated encryption key.
+# It must be exactly 32 characters long.
+# You can generate a key using the following command:
+#   pwgen -s 32 1
+#
+# Anyone who gets hold of this key can download your backed up files from your S3 bucket.
+#
+# You don't need to remember this key but you MUST securely upload it online by following
+# the instructions in the README file. Failing to do this makes your online backup useless,
+# as you won't be able to restore from it without a key.
+
+ENCRYPTION_KEY='%32_CHARACTERS_KEY%'
