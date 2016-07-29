@@ -203,6 +203,20 @@ function list_bucket_to_file() {
 	debug "list_bucket_to_file(): All done."
 }
 
+function assert_backup_key_is_stored() {
+	debug "assert_backup_key_is_stored(): Getting a list..."
+
+	# --recursive gives us full path names in the output
+	aws_cmd s3 ls --recursive "s3://$AWS_BUCKET/backup.info/key/data" \
+		| egrep -q 'backup.info/key/data'
+
+	if [ "$?" -ne 0 ]; then
+		crit "WARNING: You have not backed up your encryption key, yet."
+	fi
+
+	debug "assert_backup_key_is_stored(): All done."
+}
+
 ### XXX: main()
 
 LOGGER_ID="encrypted-s3-sync[$$]" # so that we use the same PID
@@ -237,4 +251,5 @@ create_bucket
 sync_dir
 random_download_verify
 list_bucket_to_file # this seems to consume many S3 LIST resources
+assert_backup_key_is_stored
 debug "All done."
