@@ -12,6 +12,9 @@ It's important to mention that the data is transferred securely to S3 (noone els
 # Confidentiality
 Note that while your S3 data is encrypted and nobody can read its content, anyone with access to the S3 bucket can list the filenames in it. If the filenames without the data in them reveal any sensitive information, you must not give access to your S3 bucket to anyone else. Which is a good idea anyway.
 
+# Security
+The customer-provided encryption key "--sse-c-key" is part of the command-line arguments for "aws s3 sync" which can be insecure. Many Linux distros allow anyone to see the whole "ps" output which would reveal the key to a third-party user on the same Linux machine. While this shouldn't be a big problem for a single-account Desktop system, it could be a security concern for multi-user systems which do not hide the "ps" entries of processes not owned by the current user.
+
 # Prerequisites
 You have to [install](http://docs.aws.amazon.com/cli/latest/userguide/installing.html) and [configure](http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html) the AWS Command Line Interface (CLI).
 
