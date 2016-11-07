@@ -159,6 +159,12 @@ function random_download_verify() {
 		cd "$LOCAL_DIR" || exit 0;
 		find -type f -print0|sort -z --random-sort|cut -d $'\0' -f1|cut -b3-
 	)"
+
+	if [ "$FILE" == "" ]; then
+		debug "random_download_verify(): SKIPPING -- no local files found."
+		return
+	fi
+
 	debug "random_download_verify(): Starting check for file \"$FILE\"."
 
 	local DST
