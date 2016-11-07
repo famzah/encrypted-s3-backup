@@ -2,7 +2,7 @@
 Encrypted secure remote backup over Internet on Linux. The data is stored on [Amazon S3](https://aws.amazon.com/s3).
 
 # Motivation
-This backup system leaves control in your hands. Additionally, the backup scripts are very small and you can easily audit them.
+This backup system leaves control in your hands. Additionally, the backup scripts are very small and you can easily audit them. You can review this [blog page](https://blog.famzah.net/2016/10/23/goodbye-acronis-cloud-hello-encrypted-s3-backup/) for further information regarding projected S3 costs and performance.
 
 # Encryption
 It's important to mention that the data is transferred securely to S3 (noone else can see it) but encrypted server-side by S3 (therefore AWS S3 sees your data unencrypted for a moment). This means you have to trust Amazon S3 and their mechanism for [Server-Side Encryption with Customer-Provided Keys (SSE-C)](http://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html). They claim and I believe them that:
