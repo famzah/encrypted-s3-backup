@@ -141,7 +141,7 @@ function _bad_download_try() {
 
 	local OUT="$(aws_cmd s3 cp "s3://$AWS_BUCKET/$FILE" "$DST_FILE" \
 		"$@" --only-show-errors 2>&1 >/dev/null)"
-	local OUT_SHORT="$(echo "$OUT"|cut -d: -f2|cut -b2-)"
+	local OUT_SHORT="$(echo "$OUT"|perl -p -e 's/^.+:\s([^:]+)$/$1/')"
 
 	if [ -e "$DST_FILE" ]; then
 		crit "_bad_download_try(): ERROR: A file was transferred at \"$DST_FILE\"." >&2
