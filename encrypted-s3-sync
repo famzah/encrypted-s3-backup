@@ -113,11 +113,15 @@ function sync_dir() {
 	DEBUGF="$(mktemp)"
 	[ "$?" -eq 0 ] || exit 1 # mktemp() failed
 
+  local SYMLINK_FLAG
+  if [ "x${FOLLOW_SYMLINKS}" == "xno" ]; then
+    SYMLINK_FLAG='--no-follow-symlinks'
+  fi
 	debug "sync_dir(): aws s3 sync progress is logged in \"$DEBUGF\""
 	aws_cmd s3 sync "$LOCAL_DIR" "s3://${AWS_BUCKET}/${REMOTE_DIR_PREFIX}" \
 		--delete \
 		--acl 'private' \
-		--no-follow-symlinks \
+		${SYMLINK_FLAG} \
 		--no-guess-mime-type \
 		--sse-c \
 		--sse-c-key "$ENCRYPTION_KEY" \
