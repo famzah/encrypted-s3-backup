@@ -43,8 +43,8 @@ REMOTE_DIR_PREFIX='%PREFIX_DIR%'
 
 LOCAL_LIST=''
 
-# The default behavior is not to follow symlinks. Set this to any value other than 'no' if you
-# prefer that symlinks should be followed (be careful of loops).
+# The default behavior is not to follow symlinks. Set this to 'yes' if you prefer that
+# symlinks should be followed (be careful of loops).
 FOLLOW_SYMLINKS='no'
 
 # Randomly generated encryption key.
