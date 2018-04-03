@@ -43,6 +43,10 @@ REMOTE_DIR_PREFIX='%PREFIX_DIR%'
 
 LOCAL_LIST=''
 
+# The default behavior is not to follow symlinks. Set this to 'yes' if you prefer that
+# symlinks should be followed (be careful of loops).
+FOLLOW_SYMLINKS='no'
+
 # Randomly generated encryption key.
 # It must be exactly 32 characters long.
 # You can generate a key using the following command:
