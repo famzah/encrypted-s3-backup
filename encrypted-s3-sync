@@ -114,7 +114,7 @@ function sync_dir() {
 	[ "$?" -eq 0 ] || exit 1 # mktemp() failed
 
 	local SYMLINK_FLAG
-	if [ "x${FOLLOW_SYMLINKS}" == "xyes" ]; then
+	if [ "$FOLLOW_SYMLINKS" == "yes" ]; then
 		SYMLINK_FLAG=''
 	else
 		SYMLINK_FLAG='--no-follow-symlinks'
@@ -247,6 +247,7 @@ AWS_PROFILE="default"
 REMOTE_DIR_PREFIX=""
 LOCAL_LIST=""
 AWS_NET_TIMEOUT=60
+FOLLOW_SYMLINKS="no"
 source "$CONFIG_FILE" || exit 1
 assert_config_keys
 
