@@ -56,7 +56,7 @@ $ ./encrypted-s3-upload-key
 
 You can verify if you can retrieve your backup encryption key by executing the following command, which you will also need in case your hard disk dies:
 ```bash
-$ ./encrypted-s3-download-key default eu-east-1 example-bucket-f9kgixb
+$ ./encrypted-s3-download-key default eu-central-1 example-bucket-f9kgixb
 ```
 
 If you run the backup again, it won't produce any warnings:
@@ -70,7 +70,7 @@ You are free to schedule the backup as often as you need, and using any suitable
 # Restoring a single file
 You can download a single file using the following command:
 ```bash
-$ ./encrypted-s3-download-file default eu-east-1 s3://example-bucket-f9kgixb/workstation1/linux/user32/documents/notes2.txt /tmp/test.txt
+$ ./encrypted-s3-download-file default eu-central-1 s3://example-bucket-f9kgixb/workstation1/linux/user32/documents/notes2.txt /tmp/test.txt
 ```
 
 This will download the latest version of the file.
