@@ -53,9 +53,9 @@ function create_bucket() {
 	debug "create_bucket(): Listing existing S3 buckets..."
 
 	local GOT_BUCKET
-	GOT_BUCKET="$(aws_cmd s3api list-buckets)"
+	GOT_BUCKET="$(aws_cmd s3api list-buckets --query 'Buckets[].Name')"
 	[ "$?" -eq 0 ] || fail
-	GOT_BUCKET="$(echo "$GOT_BUCKET" | egrep "^BUCKETS" | awk '{print $3}' | grep -x "$AWS_BUCKET" )"
+	GOT_BUCKET="$(echo "$GOT_BUCKET" | tr '\t' '\n' | grep -x "$AWS_BUCKET")"
 
 	if [ "$GOT_BUCKET" == "" ]; then # non-existing
 		debug "create_bucket(): The S3 bucket \"$AWS_BUCKET\" does not exist. Creating it..."
